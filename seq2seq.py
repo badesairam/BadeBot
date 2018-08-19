@@ -9,7 +9,7 @@ import os
 
 #add <EOS> to response file
 def createTrainingSentences(convFile,wList):
-	conversationDictionary = np.load(conversationFileName).item()
+	conversationDictionary = np.load(convFile).item()
 	# numExamples = len(conversationDictionary)
 	max_message_length = 0
 	max_response_length = 0
@@ -26,11 +26,17 @@ def createTrainingSentences(convFile,wList):
 
 		for i,token in enumerate(key.split(" ")):
 			if (token != ""):
-				message_token_id.append(wList.index(token))
+				try:
+					message_token_id.append(wList.index(token))
+				except ValueError:
+					message_token_id.append(wList.index('<UNK>'))
 
 		for i,token in enumerate(value.split(" ")):
 			if (token != ""):
-				response_token_id.append(wList.index(token))
+				try:
+					response_token_id.append(wList.index(token))
+				except ValueError:
+					response_token_id.append(wList.index('<EOS>'))
 		response_token_id.append(wList.index('<EOS>'))
 
 	message_text_id.append(message_token_id)
@@ -163,8 +169,8 @@ def decoding_layer(dec_input, encoder_state,
 		infer_output = decoding_layer_infer(encoder_state, 
 											cells, 
 											dec_embeddings, 
-											target_vocab_to_int['<GO>'], 
-											target_vocab_to_int['<EOS>'], 
+											target_vocab_to_int.index('<GO>'), 
+											target_vocab_to_int.index('<EOS>'), 
 											max_target_sequence_length, 
 											target_vocab_size, 
 											output_layer,
@@ -217,12 +223,17 @@ def pad_sentence_batch(sentence_batch, pad_int):
 
 def get_batches(sources, targets, batch_size, source_pad_int, target_pad_int):
 	"""Batch targets, sources, and the lengths of their sentences together"""
+	# print(len(sources)//batch_size)
 	for batch_i in range(0, len(sources)//batch_size):
 		start_i = batch_i * batch_size
+	
+		print("Here %d",start_i)
 
 		# Slice the right amount for the batch
 		sources_batch = sources[start_i:start_i + batch_size]
 		targets_batch = targets[start_i:start_i + batch_size]
+		print(length(sources_batch))
+		print(length(targets_batch))
 
 		# Pad
 		pad_sources_batch = np.array(pad_sentence_batch(sources_batch, source_pad_int))
@@ -237,12 +248,16 @@ def get_batches(sources, targets, batch_size, source_pad_int, target_pad_int):
 		for source in pad_sources_batch:
 			pad_source_lengths.append(len(source))
 
+		print(pad_sources_lengths)
+		print(pad_targets_lengths)
+
+
 		yield pad_sources_batch, pad_targets_batch, pad_source_lengths, pad_targets_lengths
 
 
 
 #Loading in all the data structures
-with open("wordList.txt", "rb") as fp:
+with open("wordList.txt", "r") as fp:
 	wordList = fp.read().split('\n')
 
 vocabSize = len(wordList)
@@ -265,7 +280,8 @@ if (os.path.isfile('embeddingMatrix.npy')):
 wordList.append('<PAD>')
 wordList.append('<GO>')
 wordList.append('<EOS>')
-vocabSize = vocabSize + 3
+wordList.append('<UNK>')
+vocabSize = vocabSize + 4
 
 
 display_step = 300
@@ -286,7 +302,7 @@ if(os.path.isfile('text_ids.p')):
 	with open('text_ids.p',mode = 'rb') as in_file:
 		(max_message_length,max_response_length), (message_text_id, response_text_id) = pickle.load(in_file)
 else:
-	max_message_length,max_response_length, message_text_id, response_text_id = createTrainingSentences('conversationDictionary.npy', wordList)
+	max_message_length,max_response_length, message_text_id, response_text_id = createTrainingSentences('conversationData.npy', wordList)
 	print("Dumping text_ids to file")
 	#dump preprocess data
 	pickle.dump(((max_message_length,max_response_length),(message_text_id,response_text_id)),open('text_ids.p','wb'))
@@ -296,7 +312,7 @@ with train_graph.as_default():
 	input_data, targets, target_sequence_length, max_target_sequence_length = enc_dec_model_inputs()
 	lr, keep_prob = hyperparam_inputs()
 	
-	train_logits, inference_logits = seq2seq_model(tf.reverse(input_data, [-1]),
+	train_logits, inference_logits = seq2seq_model(input_data,
 												   targets,
 												   keep_prob,
 												   batch_size,
@@ -308,7 +324,7 @@ with train_graph.as_default():
 												   decoding_embedding_size,
 												   rnn_size,
 												   num_layers,
-												   target_vocab_to_int)
+												   wordList)
 	
 	training_logits = tf.identity(train_logits.rnn_output, name='logits')
 	inference_logits = tf.identity(inference_logits.sample_id, name='predictions')
