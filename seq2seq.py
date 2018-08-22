@@ -10,7 +10,7 @@ import os
 #add <EOS> to response file
 def createTrainingSentences(convFile,wList):
 	conversationDictionary = np.load(convFile).item()
-	# numExamples = len(conversationDictionary)
+	print(len(conversationDictionary))
 	max_message_length = 0
 	max_response_length = 0
 	message_text_id = []
@@ -19,6 +19,7 @@ def createTrainingSentences(convFile,wList):
 	for index,(key,value) in enumerate(conversationDictionary.items()):
 		message_token_id = []
 		response_token_id = []
+
 		if len(key.split(" ")) > max_message_length:
 			max_message_length = len(key.split(" "))
 		if len(value.split(" ")) > max_response_length:
@@ -36,12 +37,12 @@ def createTrainingSentences(convFile,wList):
 				try:
 					response_token_id.append(wList.index(token))
 				except ValueError:
-					response_token_id.append(wList.index('<EOS>'))
+					response_token_id.append(wList.index('<UNK>'))
 		response_token_id.append(wList.index('<EOS>'))
 
-	message_text_id.append(message_token_id)
-	response_text_id.append(response_token_id)
-
+		message_text_id.append(message_token_id)
+		response_text_id.append(response_token_id)
+	print("message :: %d , response :: %d",(len(message_text_id),len(response_text_id)))
 	return max_message_length,max_response_length,message_text_id,response_text_id
 
 
@@ -226,15 +227,11 @@ def get_batches(sources, targets, batch_size, source_pad_int, target_pad_int):
 	# print(len(sources)//batch_size)
 	for batch_i in range(0, len(sources)//batch_size):
 		start_i = batch_i * batch_size
-	
-		print("Here %d",start_i)
+		
 
 		# Slice the right amount for the batch
 		sources_batch = sources[start_i:start_i + batch_size]
 		targets_batch = targets[start_i:start_i + batch_size]
-		print(length(sources_batch))
-		print(length(targets_batch))
-
 		# Pad
 		pad_sources_batch = np.array(pad_sentence_batch(sources_batch, source_pad_int))
 		pad_targets_batch = np.array(pad_sentence_batch(targets_batch, target_pad_int))
@@ -247,10 +244,6 @@ def get_batches(sources, targets, batch_size, source_pad_int, target_pad_int):
 		pad_source_lengths = []
 		for source in pad_sources_batch:
 			pad_source_lengths.append(len(source))
-
-		print(pad_sources_lengths)
-		print(pad_targets_lengths)
-
 
 		yield pad_sources_batch, pad_targets_batch, pad_source_lengths, pad_targets_lengths
 
@@ -271,6 +264,7 @@ else:
 PADVector = np.zeros((1, wordVecDimensions), dtype='int32')
 EOSVector = np.ones((1, wordVecDimensions), dtype='int32')
 GOVector = np.ones((1, wordVecDimensions), dtype='int32')
+save_path = 'final.mdl'
 if (os.path.isfile('embeddingMatrix.npy')): 
 	wordVectors = np.concatenate((wordVectors,PADVector), axis=0)
 	wordVectors = np.concatenate((wordVectors,EOSVector), axis=0)
@@ -283,10 +277,11 @@ wordList.append('<EOS>')
 wordList.append('<UNK>')
 vocabSize = vocabSize + 4
 
+testStrings = ["hey whats up","god morning","hi","score entha","em chesthunav"]
 
-display_step = 300
+display_step = 30
 
-epochs = 13
+epochs = 3
 batch_size = 128
 
 rnn_size = 128
@@ -374,8 +369,11 @@ train_source = message_text_id[batch_size:]
 train_target = response_text_id[batch_size:]
 valid_source = message_text_id[:batch_size]
 valid_target = response_text_id[:batch_size]
-(valid_sources_batch, valid_targets_batch, valid_sources_lengths, valid_targets_lengths ) = next(get_batches(valid_source, valid_target,batch_size,wordList.index('<PAD>'),wordList.index('<PAD>'))) 
+print("message_length :: %d , response_length :: %d " ,(len(message_text_id),len(response_text_id)))
 
+
+(valid_sources_batch, valid_targets_batch, valid_sources_lengths, valid_targets_lengths ) = next(get_batches(valid_source, valid_target,batch_size,wordList.index('<PAD>'),wordList.index('<PAD>'))) 
+print(get_batches(valid_source, valid_target,batch_size,wordList.index('<PAD>'),wordList.index('<PAD>'))) 
 with tf.Session(graph=train_graph) as sess:
 	sess.run(tf.global_variables_initializer())
 
@@ -407,8 +405,8 @@ with tf.Session(graph=train_graph) as sess:
 
 				train_acc = get_accuracy(target_batch, batch_train_logits)
 				valid_acc = get_accuracy(valid_targets_batch, batch_valid_logits)
-		#		print('Epoch {:>3} Batch {:>4}/{} - Train Accuracy: {:>6.4f}, Validation Accuracy: {:>6.4f}, Loss: {:>6.4f}'
-		#			  .format(epoch_i, batch_i, len(source_int_text) // batch_size, train_acc, valid_acc, loss))
+				print('Epoch {:>3} Batch {:>4} - Train Accuracy: {:>6.4f}, Validation Accuracy: {:>6.4f}, Loss: {:>6.4f}'
+					  .format(epoch_i, batch_i,  train_acc, valid_acc, loss))
 
 	# Save Model
 	saver = tf.train.Saver()
