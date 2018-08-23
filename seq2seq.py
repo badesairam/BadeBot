@@ -247,8 +247,31 @@ def get_batches(sources, targets, batch_size, source_pad_int, target_pad_int):
 
 		yield pad_sources_batch, pad_targets_batch, pad_source_lengths, pad_targets_lengths
 
+def create_test_sentences(testStrings,wList):
+	"""Converts testStrings to integer ids with padding and all"""
+	message_text_id = []
+	for index,text in enumerate(testStrings):
+		message_token_id = []
+		for i,token in enumerate(text.split(" ")):
+			message_token_id.append(wList.index(token))
+		message_text_id.append(message_token_id)
 
+	pad_test_batch = np.array(pad_sentence_batch(message_text_id, wordList.index('<PAD>')))
+	pad_test_lengths = []
+	for test in pad_test_batch:
+		pad_test_lengths.append(len(test))
 
+	return pad_test_batch,pad_test_lengths
+
+def test_to_text(testStrings,wList):
+	""" Converts testlogits to text """
+	output = []
+	for i,token in enumerate(testStrings):
+		output_text = []
+		for j,token_word in enumerate(token):
+			output_text.append(wList[int(token_word)])
+		output.append(output_text)
+	return output
 #Loading in all the data structures
 with open("wordList.txt", "r") as fp:
 	wordList = fp.read().split('\n')
@@ -264,7 +287,7 @@ else:
 PADVector = np.zeros((1, wordVecDimensions), dtype='int32')
 EOSVector = np.ones((1, wordVecDimensions), dtype='int32')
 GOVector = np.ones((1, wordVecDimensions), dtype='int32')
-save_path = 'final.mdl'
+save_path = "/mnt/m/Study/Chatbot/final.mdl"
 if (os.path.isfile('embeddingMatrix.npy')): 
 	wordVectors = np.concatenate((wordVectors,PADVector), axis=0)
 	wordVectors = np.concatenate((wordVectors,EOSVector), axis=0)
@@ -281,7 +304,7 @@ testStrings = ["hey whats up","god morning","hi","score entha","em chesthunav"]
 
 display_step = 30
 
-epochs = 3
+epochs = 1
 batch_size = 128
 
 rnn_size = 128
@@ -373,14 +396,17 @@ print("message_length :: %d , response_length :: %d " ,(len(message_text_id),len
 
 
 (valid_sources_batch, valid_targets_batch, valid_sources_lengths, valid_targets_lengths ) = next(get_batches(valid_source, valid_target,batch_size,wordList.index('<PAD>'),wordList.index('<PAD>'))) 
-print(get_batches(valid_source, valid_target,batch_size,wordList.index('<PAD>'),wordList.index('<PAD>'))) 
+# print(get_batches(valid_source, valid_target,batch_size,wordList.index('<PAD>'),wordList.index('<PAD>')))
+
+test_batch,test_lengths = create_test_sentences(testStrings,wordList)
+
 with tf.Session(graph=train_graph) as sess:
 	sess.run(tf.global_variables_initializer())
 
 	for epoch_i in range(epochs):
 		for batch_i, (source_batch, target_batch, sources_lengths, targets_lengths) in enumerate(
 				get_batches(train_source, train_target, batch_size,wordList.index('<PAD>'),wordList.index('<PAD>'))):
-			print("epoch :: %i , batch :: %i ",(epoch_i,batch_i))
+			print('epoch :: {}, batch :: {} '.format(epoch_i,batch_i))
 			_, loss = sess.run(
 				[train_op, cost],
 				{input_data: source_batch,
@@ -402,6 +428,10 @@ with tf.Session(graph=train_graph) as sess:
 					{input_data: valid_sources_batch,
 					 target_sequence_length: valid_targets_lengths,
 					 keep_prob: 1.0})
+				#outputs for testStrings
+
+				test_logits = sess.run(inference_logits,{input_data:test_batch , target_sequence_length : test_lengths, keep_prob: 1.0})
+				print ('Messages :: {}, Responses :: {}'.format(testStrings,test_to_text(test_logits)))
 
 				train_acc = get_accuracy(target_batch, batch_train_logits)
 				valid_acc = get_accuracy(valid_targets_batch, batch_valid_logits)
